@@ -14,6 +14,27 @@ except ImportError:
     pass
 
 import google.generativeai as genai
+
+# ─── httpx compatibility patch ────────────────────────────────────────────────
+# groq < 1.0.0 passes `proxies` to httpx.Client, which httpx removed in 0.28.
+# This patch silently drops the argument so the bot works regardless of the
+# installed groq version.  Safe to leave in place after upgrading groq.
+try:
+    import httpx
+    _original_init = httpx.Client.__init__
+    def _patched_init(self, *args, **kwargs):
+        kwargs.pop("proxies", None)
+        _original_init(self, *args, **kwargs)
+    httpx.Client.__init__ = _patched_init
+
+    _original_async_init = httpx.AsyncClient.__init__
+    def _patched_async_init(self, *args, **kwargs):
+        kwargs.pop("proxies", None)
+        _original_async_init(self, *args, **kwargs)
+    httpx.AsyncClient.__init__ = _patched_async_init
+except Exception:
+    pass  # Never crash on startup due to a patch failure
+
 from groq import Groq
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -81,7 +102,7 @@ def get_user_provider(uid: int) -> str:
     return "groq"
 
 def get_user_model(uid: int) -> str:
-    defaults = {"groq": "llama-3.3-70b-versatile", "gemini": "gemini-1.5-flash"}
+    defaults = {"groq": "llama-3.3-70b-versatile", "gemini": "gemini-2.5-flash"}
     provider = get_user_provider(uid)
     return USER_KEYS.get(str(uid), {}).get("model", defaults.get(provider, "llama-3.3-70b-versatile"))
 
@@ -128,9 +149,9 @@ GROQ_MODELS = {
 }
 
 GEMINI_MODELS = {
-    "gemini-1.5-flash":   "⚡ Gemini 1.5 Flash (Fast)",
-    "gemini-1.5-pro":     "🧠 Gemini 1.5 Pro (Best)",
-    "gemini-2.0-flash":   "🚀 Gemini 2.0 Flash",
+    "gemini-2.5-flash":      "⚡ Gemini 2.5 Flash (Fast)",
+    "gemini-2.5-pro":        "🧠 Gemini 2.5 Pro (Best)",
+    "gemini-2.5-flash-lite": "🚀 Gemini 2.5 Flash-Lite (Cheapest)",
 }
 
 # ─── Conversation States ──────────────────────────────────────────────────────
@@ -289,7 +310,7 @@ async def generate_story(uid: int, genre_desc: str, topic: str) -> tuple[str, st
     fallback_key = gemini_key   if provider == "groq"   else groq_key
 
     # Default models for fallback
-    fallback_model = "gemini-1.5-flash" if provider == "groq" else "llama-3.3-70b-versatile"
+    fallback_model = "gemini-2.5-flash" if provider == "groq" else "llama-3.3-70b-versatile"
 
     if primary_key:
         try:
@@ -352,8 +373,7 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         parse_mode="Markdown",
         reply_markup=settings_keyboard(uid),
     )
-    # Stay in WAITING_FOR_KEY so the ConversationHandler keeps handling
-    # settings:* callbacks and key-text messages that follow.
+    # Stay in WAITING_FOR_KEY so ConversationHandler keeps handling button callbacks and key input
     return WAITING_FOR_KEY
 
 async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -468,7 +488,7 @@ async def provider_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
     set_user_data(uid, provider=choice)
     # Reset to default model for the new provider
-    default_model = "llama-3.3-70b-versatile" if choice == "groq" else "gemini-1.5-flash"
+    default_model = "llama-3.3-70b-versatile" if choice == "groq" else "gemini-2.5-flash"
     set_user_data(uid, model=default_model)
 
     await query.edit_message_text(
@@ -550,7 +570,7 @@ async def receive_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
             )
         else:
             await loop.run_in_executor(
-                None, _call_gemini, key, "gemini-1.5-flash", "Say 'ok' in one word."
+                None, _call_gemini, key, "gemini-2.5-flash", "Say 'ok' in one word."
             )
 
         set_user_data(uid, **{key_type: key})
@@ -825,10 +845,8 @@ def main() -> None:
         ],
         states={
             WAITING_FOR_KEY: [
-                # Allow /settings and /cancel to escape the waiting state
                 CommandHandler("settings", settings_command),
                 CommandHandler("cancel",   cancel),
-                # Handle settings button callbacks while waiting (e.g. user switches action)
                 CallbackQueryHandler(settings_callback, pattern=r"^settings:"),
                 CallbackQueryHandler(model_callback,    pattern=r"^model:"),
                 CallbackQueryHandler(provider_callback, pattern=r"^prov:"),
