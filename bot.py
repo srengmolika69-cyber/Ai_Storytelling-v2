@@ -70,7 +70,15 @@ def get_user_groq_key(uid: int) -> str:
     return USER_KEYS.get(str(uid), {}).get("groq", DEFAULT_GROQ_KEY)
 
 def get_user_provider(uid: int) -> str:
-    return USER_KEYS.get(str(uid), {}).get("provider", "groq")
+    stored = USER_KEYS.get(str(uid), {}).get("provider")
+    if stored:
+        return stored
+    # Auto-detect: prefer groq if key exists, else gemini, else groq as placeholder
+    if USER_KEYS.get(str(uid), {}).get("groq") or DEFAULT_GROQ_KEY:
+        return "groq"
+    if USER_KEYS.get(str(uid), {}).get("gemini") or DEFAULT_GEMINI_KEY:
+        return "gemini"
+    return "groq"
 
 def get_user_model(uid: int) -> str:
     defaults = {"groq": "llama-3.3-70b-versatile", "gemini": "gemini-1.5-flash"}
@@ -628,8 +636,21 @@ async def topic_received(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     story, used_provider = await generate_story(uid, genre_desc, topic)
     await thinking_msg.delete()
 
-    prov_badge = f"⚡ Groq" if used_provider == "groq" else f"🤖 Gemini" if used_provider == "gemini" else ""
-    fallback_note = f" _(fallback)_" if used_provider != provider else ""
+    # If both providers failed, show a clean error (don't wrap error in story template)
+    if used_provider == "none":
+        await update.message.reply_text(
+            "❌ *មិនអាចបង្កើតរឿងបាន!*\n\n"
+            "សូមពិនិត្យ API Key:\n"
+            "• ប្រើ /settings → ដាក់ Groq ឬ Gemini Key\n\n"
+            "⚡ Groq FREE: [console.groq.com/keys](https://console.groq.com/keys)\n"
+            "🤖 Gemini FREE: [aistudio.google.com](https://aistudio.google.com/app/apikey)",
+            parse_mode="Markdown",
+            disable_web_page_preview=True,
+        )
+        return ConversationHandler.END
+
+    prov_badge    = "⚡ Groq" if used_provider == "groq" else "🤖 Gemini"
+    fallback_note = " _(fallback)_" if used_provider != provider else ""
 
     add_to_history(uid, genre_label, topic, story)
 
@@ -665,12 +686,20 @@ async def action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         story, used_provider = await generate_story(uid, genre_desc, topic)
         await thinking_msg.delete()
 
+        if used_provider == "none":
+            await query.message.reply_text(
+                "❌ *មិនអាចបង្កើតរឿងបាន!*\n\nប្រើ /settings → ពិនិត្យ API Key។",
+                parse_mode="Markdown",
+            )
+            return READING_STORY
+
         add_to_history(uid, genre_label, topic, story)
-        prov_badge = f"⚡ Groq" if used_provider == "groq" else f"🤖 Gemini"
+        prov_badge    = "⚡ Groq" if used_provider == "groq" else "🤖 Gemini"
+        fallback_note = " _(fallback)_" if used_provider != provider else ""
 
         await query.message.reply_text(
             f"📜 *រឿងថ្មី: {topic}*\n"
-            f"🏷️ {genre_label}  {prov_badge}\n"
+            f"🏷️ {genre_label}  {prov_badge}{fallback_note}\n"
             f"{'─'*28}\n\n"
             f"{story}\n\n"
             f"{'─'*28}\n"
