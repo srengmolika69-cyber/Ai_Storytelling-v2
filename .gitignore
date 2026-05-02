@@ -1,0 +1,7 @@
+TELEGRAM_TOKEN=
+.env
+__pycache__/
+*.pyc
+user_keys.json
+story_history.json
+venv/
