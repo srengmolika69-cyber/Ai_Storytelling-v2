@@ -123,7 +123,7 @@ def get_history(uid: int) -> list:
 GROQ_MODELS = {
     "llama-3.3-70b-versatile": "⚡ Llama 3.3 70B (Best)",
     "llama-3.1-8b-instant":    "🚀 Llama 3.1 8B (Fastest)",
-    "mixtral-8x7b-32768":      "🎯 Mixtral 8x7B",
+    "llama3-70b-8192":         "🎯 Llama 3 70B",
     "gemma2-9b-it":            "💎 Gemma 2 9B",
 }
 
@@ -280,7 +280,7 @@ async def generate_story(uid: int, genre_desc: str, topic: str) -> tuple[str, st
         f"សូមសរសេររឿងខ្មែរមួយពីប្រធានបទខាងលើ:"
     )
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     # Try primary provider first
     primary_fn   = _call_groq   if provider == "groq"   else _call_gemini
@@ -352,7 +352,9 @@ async def settings_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         parse_mode="Markdown",
         reply_markup=settings_keyboard(uid),
     )
-    return ConversationHandler.END
+    # Stay in WAITING_FOR_KEY so the ConversationHandler keeps handling
+    # settings:* callbacks and key-text messages that follow.
+    return WAITING_FOR_KEY
 
 async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query  = update.callback_query
@@ -369,7 +371,7 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             parse_mode="Markdown",
             reply_markup=provider_keyboard(uid),
         )
-        return ConversationHandler.END
+        return WAITING_FOR_KEY  # stay active so prov: callbacks are caught
 
     elif action == "model":
         provider = get_user_provider(uid)
@@ -408,18 +410,28 @@ async def settings_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return WAITING_FOR_KEY
 
     elif action == "del_groq":
-        if delete_user_key(uid, "groq"):
-            await query.edit_message_text("🗑️ *Groq Key ត្រូវបានលុប!*", parse_mode="Markdown")
-        else:
-            await query.edit_message_text("⚠️ គ្មាន Groq Key ដើម្បីលុប។")
-        return ConversationHandler.END
+        deleted = delete_user_key(uid, "groq")
+        msg = "🗑️ *Groq Key ត្រូវបានលុប!*\n\n" if deleted else "⚠️ គ្មាន Groq Key ដើម្បីលុប។\n\n"
+        provider = get_user_provider(uid)
+        model    = get_user_model(uid)
+        await query.edit_message_text(
+            msg + f"🔀 Provider: *{provider.title()}*\n🧠 Model: `{model}`\n\nជ្រើសរើសសកម្មភាព:",
+            parse_mode="Markdown",
+            reply_markup=settings_keyboard(uid),
+        )
+        return WAITING_FOR_KEY
 
     elif action == "del_gemini":
-        if delete_user_key(uid, "gemini"):
-            await query.edit_message_text("🗑️ *Gemini Key ត្រូវបានលុប!*", parse_mode="Markdown")
-        else:
-            await query.edit_message_text("⚠️ គ្មាន Gemini Key ដើម្បីលុប។")
-        return ConversationHandler.END
+        deleted = delete_user_key(uid, "gemini")
+        msg = "🗑️ *Gemini Key ត្រូវបានលុប!*\n\n" if deleted else "⚠️ គ្មាន Gemini Key ដើម្បីលុប។\n\n"
+        provider = get_user_provider(uid)
+        model    = get_user_model(uid)
+        await query.edit_message_text(
+            msg + f"🔀 Provider: *{provider.title()}*\n🧠 Model: `{model}`\n\nជ្រើសរើសសកម្មភាព:",
+            parse_mode="Markdown",
+            reply_markup=settings_keyboard(uid),
+        )
+        return WAITING_FOR_KEY
 
     elif action == "home":
         await query.edit_message_text(
@@ -442,8 +454,17 @@ async def provider_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     uid    = query.from_user.id
 
     if choice == "back":
-        await query.edit_message_text("◀️ ប្រើ /settings ដើម្បីត្រឡប់ការកំណត់។")
-        return ConversationHandler.END
+        provider = get_user_provider(uid)
+        model    = get_user_model(uid)
+        await query.edit_message_text(
+            f"⚙️ *ការកំណត់*\n\n"
+            f"🔀 Provider: *{provider.title()}*\n"
+            f"🧠 Model: `{model}`\n\n"
+            "ជ្រើសរើសសកម្មភាព:",
+            parse_mode="Markdown",
+            reply_markup=settings_keyboard(uid),
+        )
+        return WAITING_FOR_KEY
 
     set_user_data(uid, provider=choice)
     # Reset to default model for the new provider
@@ -466,8 +487,17 @@ async def model_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     uid    = query.from_user.id
 
     if choice == "back":
-        await query.edit_message_text("◀️ ប្រើ /settings ដើម្បីត្រឡប់ការកំណត់។")
-        return ConversationHandler.END
+        provider = get_user_provider(uid)
+        model    = get_user_model(uid)
+        await query.edit_message_text(
+            f"⚙️ *ការកំណត់*\n\n"
+            f"🔀 Provider: *{provider.title()}*\n"
+            f"🧠 Model: `{model}`\n\n"
+            "ជ្រើសរើសសកម្មភាព:",
+            parse_mode="Markdown",
+            reply_markup=settings_keyboard(uid),
+        )
+        return WAITING_FOR_KEY
 
     set_user_data(uid, model=choice)
     all_models = {**GROQ_MODELS, **GEMINI_MODELS}
@@ -512,7 +542,7 @@ async def receive_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
     )
 
     # Validate against live API
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         if key_type == "groq":
             await loop.run_in_executor(
@@ -798,11 +828,16 @@ def main() -> None:
                 # Allow /settings and /cancel to escape the waiting state
                 CommandHandler("settings", settings_command),
                 CommandHandler("cancel",   cancel),
+                # Handle settings button callbacks while waiting (e.g. user switches action)
+                CallbackQueryHandler(settings_callback, pattern=r"^settings:"),
+                CallbackQueryHandler(model_callback,    pattern=r"^model:"),
+                CallbackQueryHandler(provider_callback, pattern=r"^prov:"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_key),
             ],
             CHOOSING_MODEL: [
                 CommandHandler("settings", settings_command),
-                CallbackQueryHandler(model_callback, pattern=r"^model:"),
+                CallbackQueryHandler(model_callback,    pattern=r"^model:"),
+                CallbackQueryHandler(settings_callback, pattern=r"^settings:"),
             ],
         },
         fallbacks=[
@@ -843,7 +878,6 @@ def main() -> None:
 
     app.add_handler(settings_conv)
     app.add_handler(story_conv)
-    app.add_handler(CallbackQueryHandler(provider_callback, pattern=r"^prov:"))
     app.add_handler(CommandHandler("history", history_command))
     app.add_handler(CommandHandler("help",    help_command))
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
