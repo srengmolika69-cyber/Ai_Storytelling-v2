@@ -795,13 +795,21 @@ def main() -> None:
         ],
         states={
             WAITING_FOR_KEY: [
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_key)
+                # Allow /settings and /cancel to escape the waiting state
+                CommandHandler("settings", settings_command),
+                CommandHandler("cancel",   cancel),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_key),
             ],
             CHOOSING_MODEL: [
+                CommandHandler("settings", settings_command),
                 CallbackQueryHandler(model_callback, pattern=r"^model:"),
             ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel",   cancel),
+            CommandHandler("settings", settings_command),
+            CommandHandler("start",    start),
+        ],
         allow_reentry=True,
     )
 
@@ -812,11 +820,24 @@ def main() -> None:
             CommandHandler("story", story_command),
         ],
         states={
-            CHOOSING_GENRE: [CallbackQueryHandler(genre_chosen,   pattern=r"^genre:")],
-            TYPING_TOPIC:   [MessageHandler(filters.TEXT & ~filters.COMMAND, topic_received)],
-            READING_STORY:  [CallbackQueryHandler(action_handler, pattern=r"^action:")],
+            CHOOSING_GENRE: [
+                CommandHandler("settings", settings_command),
+                CallbackQueryHandler(genre_chosen, pattern=r"^genre:"),
+            ],
+            TYPING_TOPIC: [
+                CommandHandler("settings", settings_command),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, topic_received),
+            ],
+            READING_STORY: [
+                CommandHandler("settings", settings_command),
+                CallbackQueryHandler(action_handler, pattern=r"^action:"),
+            ],
         },
-        fallbacks=[CommandHandler("cancel", cancel)],
+        fallbacks=[
+            CommandHandler("cancel",   cancel),
+            CommandHandler("settings", settings_command),
+            CommandHandler("start",    start),
+        ],
         allow_reentry=True,
     )
 
