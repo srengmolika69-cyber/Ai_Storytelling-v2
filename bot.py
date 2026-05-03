@@ -152,6 +152,32 @@ def rate_story(uid: int, index: int, stars: int) -> bool:
 def get_history(uid: int) -> list:
     return STORY_HISTORY.get(str(uid), [])
 
+def get_user_stats(uid: int) -> dict:
+    history = get_history(uid)
+    if not history:
+        return {}
+    total   = len(history)
+    rated   = [h for h in history if h.get("rating", 0) > 0]
+    avg_rating = round(sum(h["rating"] for h in rated) / len(rated), 1) if rated else 0
+    genre_count: dict = {}
+    for h in history:
+        g = h.get("genre", "")
+        genre_count[g] = genre_count.get(g, 0) + 1
+    top_genre = max(genre_count, key=genre_count.get) if genre_count else "—"
+    length_count: dict = {}
+    for h in history:
+        l = h.get("length", "medium")
+        length_count[l] = length_count.get(l, 0) + 1
+    top_length = max(length_count, key=length_count.get) if length_count else "medium"
+    return {
+        "total":      total,
+        "rated":      len(rated),
+        "avg_rating": avg_rating,
+        "top_genre":  top_genre,
+        "top_length": top_length,
+        "genre_count": genre_count,
+    }
+
 # ─── AI Models ────────────────────────────────────────────────────────────────
 GROQ_MODELS = {
     "llama-3.3-70b-versatile": "⚡ Llama 3.3 70B (Best)",
@@ -185,7 +211,8 @@ LENGTH_ICONS  = {"short": "📄", "medium": "📃", "long": "📜"}
     VIEWING_HISTORY,
     CHOOSING_LENGTH,
     RATING_STORY,
-) = range(9)
+    CONTINUING_STORY,
+) = range(10)
 
 WAITING_KEY_TYPE = "waiting_key_type"
 
@@ -218,6 +245,23 @@ GENRE_HINTS = {
     "mystery":   "ដំណើរស៊ើបអង្កេត — បើករហ័ស ទ្រទ្រង់ការចង់ដឹង បិទទ្វារដោយការរុករក",
     "wisdom":    "មេរៀនពុទ្ធ ឬប្រាជ្ញា — ពិភពខ្នាតតូច ចរិតជ្រៅ សារដ៏ស៊ីជម្រៅ",
     "horror":    "ភ័យ ភ្ញាក់ ស្ញើប — ពីការប្រទះ ឬអ្វីដែលមើលមិនឃើញ ក្នុងស្ថានភាពកំបាំង",
+}
+
+
+# ─── Random topics per genre ──────────────────────────────────────────────────
+RANDOM_TOPICS = {
+    "folk":      ["កញ្ញាចិញ្ចឹមត្រី","ក្មេងកំព្រានិងយក្ស","ស្ត្រីទទែហ្លុយ","ពូជស្រូវមាស","ព្រះពួនព្រៃ"],
+    "ghost":     ["ផ្ទះទំនេរចុងភូមិ","សសរទ្រព្យលាក់","ស្រែទំនេររាត្រី","ស្រីស្លៀកស",  "ច្រកទ្វារបិទតូច"],
+    "love":      ["ស្នេហ៍ក្បែរទន្លេ","ស្នេហ៍ពេលភ្លៀង","អ្នកលក់ត្រីនិងអ្នកហែក","ស្នេហ៍ព្រែកថ្ម","ព្រៃស្នេហ៍"],
+    "adventure": ["អ្នកព្រានតែម្នាក់","ដំណើរភ្នំក្រវាញ","ចោរចំការ","នាយកទ័ពក្មេង","ដំណើររំដោះ"],
+    "fable":     ["ក្អែកនិងពស់","ដំរីចោររៀន","ត្រីនិងត្រីអណ្ដើក","ក្ដាននិងសត្វបក្សី","ខ្លានិងទន្សាយ"],
+    "legend":    ["ប្រាសាទស្រែច","ព្រះខ័នព្រ័ត្រ","ព្រះនាងខ្មៅ","ទន្លេកំពង់ស្ពឺ","ព្រះថោង"],
+    "modern":    ["ជីវិតកម្មករ","ក្មេងបម្រើការ","ស្ត្រីលក់នំ","ការងារក្រុង","ចំណាកស្រុក"],
+    "children":  ["ក្មេងប្រុសសែន","ផ្ការីករៀន","ផ្ការីកក្ដិ","សត្វពស់착ល","ព្រៃថ្លឹងថ្លៃ"],
+    "comedy":    ["ចៅកម្មការ","ការចម្អិនមិនជំនាញ","ភ្លេចផ្ទះ","ការហ្វឹកហ្វឺន","ប្ដីប្រពន្ធថ្មី"],
+    "mystery":   ["ករណីអភ័យ","ហិបបាត់","ទូរស័ព្ទប្រហោង","ព្រៃស្ងាត់","ភ្ញៀវមករាប់"],
+    "wisdom":    ["ចៅហ្វាយជ្រៅ","ព្រះសង្ឃក្មេង","ជនក្រីក្រចេះចិត្ត","ទន្លេបង្រៀន","ភ្ជួររដូវ"],
+    "horror":    ["ផ្ទះមានម្ចាស់","ខ្សែស្រឡាយ","ខ្ញុំបានឃើញ","ការលាក់ ","ម្ហូបចុងក្រោយ"],
 }
 
 SYSTEM_PROMPT_BASE = """អ្នកជាអ្នកនិទានរឿងខ្មែរជំនាញ ដែលស្ទាត់ជំនាញក្នុងការសរសេររឿងខ្មែរគ្រប់ប្រភេទ។
@@ -253,6 +297,29 @@ def build_prompt(genre_desc: str, genre_key: str, topic: str, length: str) -> tu
     )
     return system, user
 
+
+def build_continue_prompt(story: str, genre_desc: str, genre_key: str,
+                           topic: str, chapter: int, length: str) -> tuple[str, str]:
+    word_count = LENGTH_WORDS.get(length, "250")
+    hint       = GENRE_HINTS.get(genre_key, "")
+    style_note = f"\nរចនាប័ទ្ម: {hint}" if hint else ""
+    system = (
+        SYSTEM_PROMPT_BASE
+        + f"\nប្រវែង: ប្រហែល {word_count} ពាក្យ"
+        + style_note
+    )
+    user = (
+        f"ប្រភេទ: {genre_desc}\n"
+        f"ប្រធានបទ: {topic}\n"
+        f"នេះជា ជំពូក {chapter} — បន្តពីរឿងដែលនៅខាងក្រោម:\n\n"
+        f"--- រឿងមុន ---\n{story[-800:]}\n--- ចប់ ---\n\n"
+        f"សូមសរសេរ ជំពូក {chapter} ដោយ:\n"
+        f"- បន្តឡើងពីដំណើររឿង\n"
+        f"- នាំយកព្រឹត្តិការណ៍ ឬការបែករើសថ្មី\n"
+        f"- ចាប់ផ្ដើមភ្លាម កុំសរសេរ 'ជំពូក...' ឬចំណងជើង:"
+    )
+    return system, user
+
 # ─── Keyboards ────────────────────────────────────────────────────────────────
 def genre_keyboard() -> InlineKeyboardMarkup:
     keys  = []
@@ -277,16 +344,21 @@ def action_keyboard(story_index: int = 0) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton("🔄 រឿងថ្មីទៀត",      callback_data="action:new"),
+            InlineKeyboardButton("🎲 Random",            callback_data="action:random"),
+        ],
+        [
             InlineKeyboardButton("📖 ប្រភេទផ្សេង",     callback_data="action:genres"),
+            InlineKeyboardButton("⏭️ បន្តរឿង",          callback_data=f"action:continue:{story_index}"),
         ],
         [
             InlineKeyboardButton("📏 ប្រែប្រួលប្រវែង",  callback_data="action:length"),
             InlineKeyboardButton(f"⭐ វាយតម្លៃ",        callback_data=f"action:rate:{story_index}"),
         ],
         [
+            InlineKeyboardButton("📊 Stats",             callback_data="action:stats"),
             InlineKeyboardButton("📚 ប្រវត្តិ",          callback_data="action:history"),
-            InlineKeyboardButton("🏠 ទំព័រដើម",          callback_data="action:home"),
         ],
+        [InlineKeyboardButton("🏠 ទំព័រដើម",            callback_data="action:home")],
     ])
 
 def rating_keyboard(story_index: int) -> InlineKeyboardMarkup:
@@ -702,6 +774,81 @@ async def receive_key(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int
         )
         return ConversationHandler.END
 
+
+# ─── /random ──────────────────────────────────────────────────────────────────
+async def random_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    uid = update.effective_user.id
+    if not (get_user_groq_key(uid) or get_user_gemini_key(uid)):
+        await update.message.reply_text(
+            "⚠️ *មិនទាន់មាន API Key!*\n\nប្រើ /settings ដើម្បីដាក់ key ។",
+            parse_mode="Markdown",
+        )
+        return ConversationHandler.END
+
+    genre_key             = random.choice(list(GENRES.keys()))
+    genre_label, genre_desc = GENRES[genre_key]
+    topic                 = random.choice(RANDOM_TOPICS.get(genre_key, ["ជីវិតខ្មែរ"]))
+    context.user_data.update(genre_key=genre_key, genre_label=genre_label,
+                              genre_desc=genre_desc, topic=topic)
+
+    provider  = get_user_provider(uid)
+    length    = get_user_length(uid)
+    prov_icon = "⚡" if provider == "groq" else "🤖"
+    li        = LENGTH_ICONS.get(length, "📃")
+
+    thinking_msg = await update.message.reply_text(
+        f"🎲 *AI Random កំពុងនិទានរឿង...*\n\n"
+        f"📖 {genre_label}  {li}\n"
+        f"🏷️ {topic}\n"
+        f"{prov_icon} {provider.title()}\n\n"
+        "_សូមរង់ចាំ..._",
+        parse_mode="Markdown",
+    )
+    story, used_provider = await generate_story(uid, genre_desc, genre_key, topic)
+    await thinking_msg.delete()
+
+    if used_provider == "none":
+        await update.message.reply_text("❌ *មិនអាចបង្កើតរឿង!*\n\nប្រើ /settings ។", parse_mode="Markdown")
+        return ConversationHandler.END
+
+    prov_badge    = "⚡ Groq" if used_provider == "groq" else "🤖 Gemini"
+    fallback_note = " _(fallback)_" if used_provider != provider else ""
+    add_to_history(uid, genre_label, topic, story, length)
+
+    msg_text = _story_message(topic, genre_label, prov_badge, fallback_note, story, length)
+    if len(msg_text) > 4000:
+        msg_text = msg_text[:3990] + "…"
+    await update.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=action_keyboard(0))
+    return READING_STORY
+
+# ─── /stats ───────────────────────────────────────────────────────────────────
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid   = update.effective_user.id
+    stats = get_user_stats(uid)
+    if not stats:
+        await update.message.reply_text(
+            "📊 *គ្មានស្ថិតិ*\n\nប្រើ /story ដើម្បីចាប់ផ្ដើម!",
+            parse_mode="Markdown",
+        )
+        return
+
+    genre_lines = ""
+    for g, count in sorted(stats["genre_count"].items(), key=lambda x: -x[1])[:5]:
+        bar = "█" * count + "░" * max(0, 5 - count)
+        genre_lines += f"  {g} {bar} {count}\n"
+
+    stars = "⭐" * round(stats["avg_rating"]) if stats["avg_rating"] else "—"
+    await update.message.reply_text(
+        f"📊 *ស្ថិតិរបស់អ្នក*\n\n"
+        f"📚 រឿងសរុប: *{stats['total']}*\n"
+        f"⭐ វាយតម្លៃ: *{stats['rated']}* រឿង  {stars}\n"
+        f"🏆 ពិន្ទុ​មធ្យម: *{stats['avg_rating']}* / 5\n"
+        f"🎭 Genre ពេញនិយម: {stats['top_genre']}\n"
+        f"📏 ប្រវែងចូលចិត្ត: {LENGTH_LABELS.get(stats['top_length'], stats['top_length'])}\n\n"
+        f"*Top Genres:*\n{genre_lines}",
+        parse_mode="Markdown",
+    )
+
 # ─── /history ─────────────────────────────────────────────────────────────────
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     uid     = update.effective_user.id
@@ -932,6 +1079,135 @@ async def action_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return READING_STORY
 
+
+    elif action == "random":
+        genre_key             = random.choice(list(GENRES.keys()))
+        genre_label, genre_desc = GENRES[genre_key]
+        topic                 = random.choice(RANDOM_TOPICS.get(genre_key, ["ជីវិតខ្មែរ"]))
+        context.user_data.update(genre_key=genre_key, genre_label=genre_label,
+                                  genre_desc=genre_desc, topic=topic)
+        provider  = get_user_provider(uid)
+        length    = get_user_length(uid)
+        li        = LENGTH_ICONS.get(length, "📃")
+        prov_icon = "⚡" if provider == "groq" else "🤖"
+
+        thinking_msg = await query.message.reply_text(
+            f"🎲 *AI Random...*\n{prov_icon} {provider.title()}  {li}",
+            parse_mode="Markdown",
+        )
+        story, used_provider = await generate_story(uid, genre_desc, genre_key, topic)
+        await thinking_msg.delete()
+
+        if used_provider == "none":
+            await query.message.reply_text("❌ *មិនអាចបង្កើតរឿង!*\nប្រើ /settings ។", parse_mode="Markdown")
+            return READING_STORY
+
+        prov_badge    = "⚡ Groq" if used_provider == "groq" else "🤖 Gemini"
+        fallback_note = " _(fallback)_" if used_provider != provider else ""
+        add_to_history(uid, genre_label, topic, story, length)
+        msg_text = _story_message(topic, genre_label, prov_badge, fallback_note, story, length)
+        if len(msg_text) > 4000:
+            msg_text = msg_text[:3990] + "…"
+        await query.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=action_keyboard(0))
+        return READING_STORY
+
+    elif action == "continue":
+        story_index = int(parts[2]) if len(parts) > 2 else 0
+        history     = get_history(uid)
+        if story_index >= len(history):
+            await query.answer("រឿងមិនឃើញទៀតទេ។", show_alert=True)
+            return READING_STORY
+
+        h           = history[story_index]
+        prev_story  = h["story"]
+        genre_key   = context.user_data.get("genre_key", "folk")
+        genre_label = h.get("genre", context.user_data.get("genre_label",""))
+        genre_desc  = GENRES.get(genre_key, ("",""))[1]
+        topic       = h.get("topic", context.user_data.get("topic",""))
+        length      = get_user_length(uid)
+
+        # determine chapter number
+        chapter_num = context.user_data.get("chapter", 1) + 1
+        context.user_data["chapter"]    = chapter_num
+        context.user_data["prev_story"] = prev_story
+        context.user_data["genre_key"]  = genre_key
+        context.user_data["topic"]      = topic
+
+        provider  = get_user_provider(uid)
+        prov_icon = "⚡" if provider == "groq" else "🤖"
+        li        = LENGTH_ICONS.get(length, "📃")
+
+        thinking_msg = await query.message.reply_text(
+            f"⏭️ *AI កំពុងបន្ត ជំពូក {chapter_num}...*\n{prov_icon} {provider.title()}  {li}",
+            parse_mode="Markdown",
+        )
+
+        system, prompt = build_continue_prompt(prev_story, genre_desc, genre_key, topic, chapter_num, length)
+        loop = asyncio.get_running_loop()
+        groq_key   = get_user_groq_key(uid)
+        gemini_key = get_user_gemini_key(uid)
+        model      = get_user_model(uid)
+        fallback_model = "gemini-2.5-flash" if provider == "groq" else "llama-3.3-70b-versatile"
+
+        story      = ""
+        used_provider = "none"
+        primary_fn  = _call_groq   if provider == "groq" else _call_gemini
+        primary_key = groq_key     if provider == "groq" else gemini_key
+        fallback_fn = _call_gemini if provider == "groq" else _call_groq
+        fallback_key= gemini_key   if provider == "groq" else groq_key
+
+        if primary_key:
+            try:
+                story = await loop.run_in_executor(None, primary_fn, primary_key, model, system, prompt)
+                used_provider = provider
+            except Exception as e:
+                logger.warning(f"Continue primary failed: {e}")
+        if not story and fallback_key:
+            try:
+                story = await loop.run_in_executor(None, fallback_fn, fallback_key, fallback_model, system, prompt)
+                used_provider = "gemini" if provider == "groq" else "groq"
+            except Exception as e:
+                logger.error(f"Continue fallback failed: {e}")
+
+        await thinking_msg.delete()
+
+        if not story:
+            await query.message.reply_text("❌ *មិនអាចបន្តរឿង!*\nប្រើ /settings → ពិនិត្យ API Key ។", parse_mode="Markdown")
+            return READING_STORY
+
+        prov_badge    = "⚡ Groq" if used_provider == "groq" else "🤖 Gemini"
+        fallback_note = " _(fallback)_" if used_provider != provider else ""
+        chapter_topic = f"{topic} — ជំពូក {chapter_num}"
+        add_to_history(uid, genre_label, chapter_topic, story, length)
+
+        msg_text = _story_message(chapter_topic, genre_label, prov_badge, fallback_note, story, length)
+        if len(msg_text) > 4000:
+            msg_text = msg_text[:3990] + "…"
+        await query.message.reply_text(msg_text, parse_mode="Markdown", reply_markup=action_keyboard(0))
+        return READING_STORY
+
+    elif action == "stats":
+        stats = get_user_stats(uid)
+        if not stats:
+            await query.message.reply_text("📊 *គ្មានស្ថិតិ* — ប្រើ /story !", parse_mode="Markdown")
+            return READING_STORY
+        genre_lines = ""
+        for g, count in sorted(stats["genre_count"].items(), key=lambda x: -x[1])[:5]:
+            bar = "█" * count + "░" * max(0, 5 - count)
+            genre_lines += f"  {g} {bar} {count}\n"
+        stars = "⭐" * round(stats["avg_rating"]) if stats["avg_rating"] else "—"
+        await query.message.reply_text(
+            f"📊 *ស្ថិតិរបស់អ្នក*\n\n"
+            f"📚 រឿងសរុប: *{stats['total']}*\n"
+            f"⭐ វាយតម្លៃ: *{stats['rated']}* រឿង  {stars}\n"
+            f"🏆 ពិន្ទុ​មធ្យម: *{stats['avg_rating']}* / 5\n"
+            f"🎭 Genre ពេញនិយម: {stats['top_genre']}\n"
+            f"📏 ប្រវែងចូលចិត្ត: {LENGTH_LABELS.get(stats['top_length'], stats['top_length'])}\n\n"
+            f"*Top Genres:*\n{genre_lines}",
+            parse_mode="Markdown",
+        )
+        return READING_STORY
+
     elif action == "genres":
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
@@ -997,12 +1273,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/settings — ការកំណត់\n"
         "/history — ប្រវត្តិ + អានរឿងចាស់\n"
         "/help — ជំនួយ\n"
+        "/random — Random រឿងភ្លាម\n"
+        "/stats — ស្ថិតិ\n"
         "/cancel — បោះបង់\n\n"
-        "*✨ ថ្មីក្នុង v3:*\n"
+        "*✨ ថ្មីក្នុង v3 + v4:*\n"
         "• ១២ ប្រភេទ (+ ប្រាជ្ញា + ភ័យខ្លាច)\n"
         "• ជ្រើសប្រវែង ខ្លី / មធ្យម / វែង\n"
         "• វាយតម្លៃ ⭐ + អានរឿងចាស់ m្ដងទៀត\n"
-        "• AI Prompt ថ្មី — រឿងស្រស់ ជ្រៅ និងខុសគ្នារៀងរាល់ជំហ្វាន!",
+        "• AI Prompt ថ្មី — រឿងស្រស់ ជ្រៅ និងខុសគ្នារៀងរាល់ជំហ្វាន!\n"
+        "• 🎲 /random — Random ប្រភេទ + ប្រធានបទដោយស្វ័យប្រវត្ត\n"
+        "• ⏭️ បន្តរឿង — Chapter 2, 3... ក្នុងរឿងដដែល\n"
+        "• 📊 /stats — ស្ថិតិ genre ពេញនិយម + ពិន្ទុ",
         parse_mode="Markdown",
         disable_web_page_preview=True,
     )
@@ -1050,7 +1331,8 @@ def main() -> None:
     story_conv = ConversationHandler(
         entry_points=[
             CommandHandler("start", start),
-            CommandHandler("story", story_command),
+            CommandHandler("story",  story_command),
+            CommandHandler("random", random_command),
         ],
         states={
             CHOOSING_GENRE: [
@@ -1101,10 +1383,12 @@ def main() -> None:
     app.add_handler(settings_conv)
     app.add_handler(story_conv)
     app.add_handler(history_conv)
-    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("random", random_command))
+    app.add_handler(CommandHandler("stats",  stats_command))
+    app.add_handler(CommandHandler("help",   help_command))
     app.add_handler(MessageHandler(filters.COMMAND, unknown))
 
-    logger.info("Khmer Storytelling Bot v3 started!")
+    logger.info("Khmer Storytelling Bot v4 started! (Random + Stats + Continue)")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
